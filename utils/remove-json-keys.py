@@ -6,79 +6,64 @@ Author:       Adam Lui
 URL:          https://github.com/adamlui/python-utils
 '''
 
-import os, re
+import os
+import json
 
 json_folder = '_locales'
-
-# UI initializations
-os.system('color') ; print('\033[0;92m') # set font to bright green
-terminal_width = os.get_terminal_size()[0]
-def print_trunc(msg) : print(msg if len(msg) < terminal_width else msg[0:terminal_width-4] + '...')
-
-print('')
 
 # Prompt user for keys to remove
 keys_to_remove = []
 while True:
     key = input("Enter key to remove (or ENTER if done): ")
-    if not key : break
+    if not key:
+        break
     keys_to_remove.append(key)
 
-# Determine closest JSON dir
-print_trunc(f'Searching for { json_folder }...')
+# Locate JSON directory
 script_dir = os.path.abspath(os.path.dirname(__file__))
-for root, dirs, files in os.walk(script_dir): # search script dir recursively
+json_dir = None
+for root, dirs, _ in os.walk(script_dir):
     if json_folder in dirs:
-        json_dir = os.path.join(root, json_folder) ; break
-else: # search script parent dirs recursively
-    parent_dir = os.path.dirname(script_dir)
-    while parent_dir and parent_dir != script_dir:
-        for root, dirs, files in os.walk(parent_dir):
-            if json_folder in dirs:
-                json_dir = os.path.join(root, json_folder) ; break
-        if json_dir : break
-        parent_dir = os.path.dirname(parent_dir)
-    else : json_dir = None
-
-# Print result
-if json_dir : print_trunc(f'JSON directory found!\n\n>> { json_dir }\n')
-else : print_trunc(f'Unable to locate a { json_folder } directory.') ; exit()
+        json_dir = os.path.join(root, json_folder)
+        break
+else:
+    print(f"Unable to locate a {json_folder} directory.")
+    exit()
 
 # Process JSON files and remove specified keys
-keys_removed, keys_skipped, processed_count = [], [], 0
+processed_count = 0
+keys_removed_count, keys_skipped_count = 0, 0
+
 for root, _, files in os.walk(json_dir):
     for filename in files:
         if filename.endswith('.json'):
-
-            # Open found JSON file
             file_path = os.path.join(root, filename)
-            with open(file_path, 'r', encoding='utf-8') as f : data = f.read()
-
-            # Remove keys
+            
+            # Load JSON data
+            with open(file_path, 'r', encoding='utf-8') as f:
+                try:
+                    data = json.load(f)
+                except json.JSONDecodeError:
+                    print(f"Error decoding JSON in file: {file_path}")
+                    continue
+            
+            # Track whether any keys are removed
             modified = False
             for key in keys_to_remove:
-                re_key = fr'"{re.escape(key)}".*?[,\n]+.*?(?="|$)'
-                data, count = re.subn(re_key, '', data)
-                if count > 0:
-                    keys_removed.append((key, os.path.relpath(file_path, json_dir)))
+                if key in data:
+                    del data[key]
+                    keys_removed_count += 1
                     modified = True
-                else : keys_skipped.append((key, os.path.relpath(file_path, json_dir)))
+                else:
+                    keys_skipped_count += 1
+            
+            # Write back if modified
             if modified:
-                with open(file_path, 'w', encoding='utf-8') as f : f.write(data)
-            processed_count += 1
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, indent=4)
+                processed_count += 1
 
-# Print file summaries
-if keys_removed:
-    print_trunc('\nKeys removed successfully!\n')
-    for key, file_path in keys_removed:
-        print(f'Removed key "{key}" in {file_path}')
-if keys_skipped:
-    print_trunc('\nKeys skipped (not found)!\n')
-    for key, file_path in keys_skipped:
-        print(f'Skipped key "{key}" in {file_path}')
-
-# Print final summary
-print_trunc('\nKey removal process completed!\n')
-print(f'Processed JSON Files: {processed_count}')
-print(f'Keys Removed: {len(keys_removed)}')
-print(f'Keys Skipped: {len(keys_skipped)}')
+# Final summary
+print(f'\nProcessed JSON Files: {processed_count}')
+print(f'Keys Removed: {keys_removed_count}')
+print(f'Keys Skipped (not found): {keys_skipped_count}')
